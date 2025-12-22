@@ -2,26 +2,31 @@ import os
 
 
 def get_files_info(working_directory, directory="."):
-    
-    full_path = os.path.join(working_directory, directory)
-    abs_working = os.path.abspath(working_directory)
-    abs_target = os.path.abspath(full_path)
-    
-    
-    if not abs_target.startswith(abs_working):
-        return (f'Error: Cannot list "{directory}" as it is outside the permitted working directory')
-    
-    if not os.path.isdir(abs_target):
-        return (f'Error: "{directory}" is not a directory')
-    
-    items = os.listdir(abs_target)
-    lines = []
+    try:
+        # Get absolute working directory
+        working_dir_abs = os.path.abspath(working_directory)
 
-    for name in items:
-        item_path = os.path.join(abs_target, name)
-        is_dir = os.path.isdir(item_path)
-        size = os.path.getsize(item_path)
-        line = f"- {name}: file_size={size} bytes, is_dir={is_dir}"
-        lines.append(line)
-        
-    return "\n".join(lines)
+        # Build and normalize target directory path
+        target_dir = os.path.normpath(os.path.join(working_dir_abs, directory))
+
+        # Ensure target_dir is within working_dir_abs
+        valid_target_dir = os.path.commonpath([working_dir_abs, target_dir]) == working_dir_abs
+        if not valid_target_dir:
+            return f'Error: Cannot list "{directory}" as it is outside the permitted working directory'
+
+        # Ensure target_dir is actually a directory
+        if not os.path.isdir(target_dir):
+            return f'Error: "{directory}" is not a directory'
+
+        # Build lines describing each item
+        lines = []
+        for name in os.listdir(target_dir):
+            item_path = os.path.join(target_dir, name)
+            is_dir = os.path.isdir(item_path)
+            size = os.path.getsize(item_path)
+            lines.append(f"- {name}: file_size={size} bytes, is_dir={is_dir}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error: {e}"

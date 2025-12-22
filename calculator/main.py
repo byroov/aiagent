@@ -1,6 +1,21 @@
 import sys
 from pkg.calculator import Calculator
 from pkg.render import format_json_output
+import os
+from dotenv import load_dotenv
+from google import genai
+
+
+
+client = genai.Client(api_key='GEMINI_API_KEY')
+
+load_dotenv()
+api_key = os.environ.get("GEMINI_API_KEY")
+if api_key == None:
+    raise RuntimeError("API Key not found, try again?")
+
+
+
 
 
 def main():
