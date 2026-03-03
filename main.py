@@ -6,9 +6,14 @@ import argparse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-
+from prompts import system_prompt
+from functions.get_files_info import schema_get_files_info
+from call_functions import available_functions
+from call_functions import call_function
 
 def main():
+
+  
     #Parse arguments
     parser = argparse.ArgumentParser(description="Chatbot")
     parser.add_argument("user_prompt", type=str, help="User prompt")
@@ -32,21 +37,78 @@ def main():
     generate_content(client, messages, args.verbose)
 
 def generate_content(client, messages, verbose):
-    response = client.models.generate_content(model= "gemini-2.5-flash", contents=messages)
+    MAX_ITERATIONS = 20
 
+    for iteration in range(MAX_ITERATIONS):
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=messages,
+            config=types.GenerateContentConfig(
+                tools=[available_functions],
+                system_instruction=system_prompt,
+            ),
+        )
 
+        if not response:
+            raise RuntimeError("Gemini API returned no response.")
 
-    if not response.usage_metadata:
-        raise RuntimeError("Gemini API response appears to be malformed.")
+        if not response.candidates:
+            raise RuntimeError("No candidates returned from Gemini.")
 
-# Print token counts if verbose
-    if verbose:
+        # ✅ Add all model responses to conversation history
+        for candidate in response.candidates:
+            if candidate.content:
+                messages.append(candidate.content)
+
+        # If no function calls → we are done
+        if not response.function_calls:
+            # Print final text response
+            for candidate in response.candidates:
+                if candidate.content and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            print(part.text)
+            break
+
+        if verbose:
+            print("Function calls:")
+
+        function_responses = []
+
+        # Execute all function calls
+        for function_call in response.function_calls:
+            if verbose:
+                print(f"Calling function: {function_call.name}({function_call.args})")
+
+            result = call_function(function_call, verbose=False)
+
+            if not result:
+                raise RuntimeError(
+                    f"Function call {function_call.name} returned no result."
+                )
+
+            # Collect tool response parts
+            function_responses.extend(result.parts)
+
+        # ✅ Append tool results so model can see them next iteration
+        messages.append(
+            types.Content(
+                role="user",
+                parts=function_responses,
+            )
+        )
+
+        if verbose:
+            print(f"Iteration {iteration + 1} complete.\n")
+
+    else:
+        # If we exit loop normally (no break)
+        print("Max iterations reached without final response.")
+        exit(1)
+
+    if verbose and response.usage_metadata:
         print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-    
-    # Always print the response
-    print(response.text)
-
 
 if __name__ == "__main__":
     main()
